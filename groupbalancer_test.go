@@ -22,6 +22,25 @@ func TestFindMembersByTopic(t *testing.T) {
 		Topics: []string{"topic-2", "topic-3"},
 	}
 
+	groupInstanceID1 := "groupInstanceId1"
+	groupInstanceID2 := "groupInstanceId2"
+
+	sa1 := GroupMember{
+		ID:              "a",
+		GroupInstanceID: &groupInstanceID1,
+		Topics:          []string{"topic-1"},
+	}
+	sa12 := GroupMember{
+		ID:              "a",
+		GroupInstanceID: &groupInstanceID1,
+		Topics:          []string{"topic-1", "topic-2"},
+	}
+	sb23 := GroupMember{
+		ID:              "b",
+		GroupInstanceID: &groupInstanceID2,
+		Topics:          []string{"topic-2", "topic-3"},
+	}
+
 	tests := map[string]struct {
 		Members  []GroupMember
 		Expected map[string][]GroupMember
@@ -29,7 +48,7 @@ func TestFindMembersByTopic(t *testing.T) {
 		"empty": {
 			Expected: map[string][]GroupMember{},
 		},
-		"one member, one topic": {
+		"one dynamic member, one topic": {
 			Members: []GroupMember{a1},
 			Expected: map[string][]GroupMember{
 				"topic-1": {
@@ -37,7 +56,7 @@ func TestFindMembersByTopic(t *testing.T) {
 				},
 			},
 		},
-		"one member, multiple topics": {
+		"one dynamic member, multiple topics": {
 			Members: []GroupMember{a12},
 			Expected: map[string][]GroupMember{
 				"topic-1": {
@@ -48,7 +67,7 @@ func TestFindMembersByTopic(t *testing.T) {
 				},
 			},
 		},
-		"multiple members, multiple topics": {
+		"multiple dynamic members, multiple topics": {
 			Members: []GroupMember{a12, b23},
 			Expected: map[string][]GroupMember{
 				"topic-1": {
@@ -60,6 +79,55 @@ func TestFindMembersByTopic(t *testing.T) {
 				},
 				"topic-3": {
 					b23,
+				},
+			},
+		},
+		"one static member, one topic": {
+			Members: []GroupMember{sa1},
+			Expected: map[string][]GroupMember{
+				"topic-1": {
+					sa1,
+				},
+			},
+		},
+		"one static member, multiple topics": {
+			Members: []GroupMember{sa12},
+			Expected: map[string][]GroupMember{
+				"topic-1": {
+					sa12,
+				},
+				"topic-2": {
+					sa12,
+				},
+			},
+		},
+		"multiple static members, multiple topics": {
+			Members: []GroupMember{sa12, sb23},
+			Expected: map[string][]GroupMember{
+				"topic-1": {
+					sa12,
+				},
+				"topic-2": {
+					sa12,
+					sb23,
+				},
+				"topic-3": {
+					sb23,
+				},
+			},
+		},
+		"one dynamic member, one static member, multiple topics": {
+			Members: []GroupMember{a12, sb23},
+			Expected: map[string][]GroupMember{
+				"topic-1": {
+					a12,
+				},
+				"topic-2": {
+					sb23,
+					a12,
+				},
+				"topic-3": {
+					sb23,
 				},
 			},
 		},
@@ -362,6 +430,100 @@ func TestFindMembersByTopicSortsByMemberID(t *testing.T) {
 		"out of order": {
 			Data:     []GroupMember{a, c, b},
 			Expected: []GroupMember{a, b, c},
+		},
+	}
+
+	for label, test := range testCases {
+		t.Run(label, func(t *testing.T) {
+			membersByTopic := findMembersByTopic(test.Data)
+
+			if actual := membersByTopic[topic]; !reflect.DeepEqual(test.Expected, actual) {
+				t.Errorf("expected %v; got %v", test.Expected, actual)
+			}
+		})
+	}
+}
+
+func TestFindMembersByTopicSortsByGroupInstanceID(t *testing.T) {
+	groupInstanceID1 := "groupInstanceId1"
+	groupInstanceID2 := "groupInstanceId2"
+	groupInstanceID3 := "groupInstanceId3"
+	topic := "topic-1"
+	a := GroupMember{
+		ID:              "a",
+		GroupInstanceID: &groupInstanceID3,
+		Topics:          []string{topic},
+	}
+	b := GroupMember{
+		ID:              "b",
+		GroupInstanceID: &groupInstanceID2,
+		Topics:          []string{topic},
+	}
+	c := GroupMember{
+		ID:              "c",
+		GroupInstanceID: &groupInstanceID1,
+		Topics:          []string{topic},
+	}
+
+	testCases := map[string]struct {
+		Data     []GroupMember
+		Expected []GroupMember
+	}{
+		"in order": {
+			Data:     []GroupMember{b, a},
+			Expected: []GroupMember{b, a},
+		},
+		"out of order": {
+			Data:     []GroupMember{a, b, c},
+			Expected: []GroupMember{c, b, a},
+		},
+	}
+
+	for label, test := range testCases {
+		t.Run(label, func(t *testing.T) {
+			membersByTopic := findMembersByTopic(test.Data)
+
+			if actual := membersByTopic[topic]; !reflect.DeepEqual(test.Expected, actual) {
+				t.Errorf("expected %v; got %v", test.Expected, actual)
+			}
+		})
+	}
+}
+func TestFindMembersByTopicSortsByGroupInstanceIDAndMemberID(t *testing.T) {
+	groupInstanceID1 := "groupInstanceId1"
+	groupInstanceID3 := "groupInstanceId3"
+	topic := "topic-1"
+	a := GroupMember{
+		ID:              "a",
+		GroupInstanceID: &groupInstanceID3,
+		Topics:          []string{topic},
+	}
+	b := GroupMember{
+		ID:     "b",
+		Topics: []string{topic},
+	}
+	c := GroupMember{
+		ID:              "c",
+		GroupInstanceID: &groupInstanceID1,
+		Topics:          []string{topic},
+	}
+
+	d := GroupMember{
+		ID:     "d",
+		Topics: []string{topic},
+	}
+
+	testCases := map[string]struct {
+		Data     []GroupMember
+		Expected []GroupMember
+	}{
+		"in order": {
+			Data:     []GroupMember{a, b},
+			Expected: []GroupMember{a, b},
+		},
+		"out of order": {
+			Data:     []GroupMember{a, d, b, c},
+			Expected: []GroupMember{c, a, b, d},
 		},
 	}
 
