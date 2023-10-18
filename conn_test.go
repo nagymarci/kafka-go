@@ -679,7 +679,7 @@ func waitForCoordinator(t *testing.T, conn *Conn, groupID string) {
 func createGroup(t *testing.T, conn *Conn, groupID string) (generationID int32, memberID string, stop func()) {
 	waitForCoordinator(t, conn, groupID)
 
-	join := func() (joinGroup joinGroupResponseV5) {
+	join := func() (joinGroup joinGroupResponseV1) {
 		var err error
 		for attempt := 0; attempt < 10; attempt++ {
 			joinGroup, err = conn.joinGroup(JoinGroupRequest{

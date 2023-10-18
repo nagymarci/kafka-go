@@ -368,13 +368,13 @@ func (c *Conn) heartbeat(request heartbeatRequestV0) (heartbeatResponseV0, error
 // joinGroup attempts to join a consumer group
 //
 // See http://kafka.apache.org/protocol.html#The_Messages_JoinGroup
-func (c *Conn) joinGroup(request JoinGroupRequest) (joinGroupResponseV5, error) {
-	var response joinGroupResponseV5
+func (c *Conn) joinGroup(request JoinGroupRequest) (joinGroupResponseV1, error) {
+	var response joinGroupResponseV1
 
 	var joinGroupVersion apiVersion
 	joinGroupVersion, err := c.negotiateVersion(joinGroup, v1) // TODO: add v5
 	if err != nil {
-		return joinGroupResponseV5{}, err // TODO
+		return joinGroupResponseV1{}, err // TODO
 	}
 
 	err = c.writeOperation(
@@ -406,10 +406,10 @@ func (c *Conn) joinGroup(request JoinGroupRequest) (joinGroupResponseV5, error) 
 		},
 	)
 	if err != nil {
-		return joinGroupResponseV5{}, err
+		return joinGroupResponseV1{}, err
 	}
 	if response.ErrorCode != 0 {
-		return joinGroupResponseV5{}, Error(response.ErrorCode)
+		return joinGroupResponseV1{}, Error(response.ErrorCode)
 	}
 
 	return response, nil

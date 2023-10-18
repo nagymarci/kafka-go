@@ -108,7 +108,6 @@ func readStringWith(r *bufio.Reader, sz int, cb func(*bufio.Reader, int, int) (i
 
 	n := int(len)
 	if n > sz {
-		fmt.Printf("readStringWith size: %d, len: %d\n", sz, len)
 		return sz, errShortRead
 	}
 

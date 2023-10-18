@@ -557,7 +557,7 @@ func (g *Generation) partitionWatcher(interval time.Duration, topic string) {
 type coordinator interface {
 	io.Closer
 	findCoordinator(findCoordinatorRequestV0) (findCoordinatorResponseV0, error)
-	joinGroup(JoinGroupRequest) (joinGroupResponseV5, error)
+	joinGroup(JoinGroupRequest) (joinGroupResponseV1, error)
 	syncGroup(syncGroupRequestV0) (syncGroupResponseV0, error)
 	leaveGroup(leaveGroupRequestV0) (leaveGroupResponseV0, error)
 	heartbeat(heartbeatRequestV0) (heartbeatResponseV0, error)
@@ -590,11 +590,11 @@ func (t *timeoutCoordinator) findCoordinator(req findCoordinatorRequestV0) (find
 	return t.conn.findCoordinator(req)
 }
 
-func (t *timeoutCoordinator) joinGroup(request JoinGroupRequest) (joinGroupResponseV5, error) {
+func (t *timeoutCoordinator) joinGroup(request JoinGroupRequest) (joinGroupResponseV1, error) {
 	// in the case of join group, the consumer group coordinator may wait up
 	// to rebalance timeout in order to wait for all members to join.
 	if err := t.conn.SetDeadline(time.Now().Add(t.timeout + t.rebalanceTimeout)); err != nil {
-		return joinGroupResponseV5{}, err
+		return joinGroupResponseV1{}, err
 	}
 	return t.conn.joinGroup(request)
 }
@@ -1009,7 +1009,7 @@ func (cg *ConsumerGroup) makeJoinGroupRequest(memberID string) (JoinGroupRequest
 
 // assignTopicPartitions uses the selected GroupBalancer to assign members to
 // their various partitions.
-func (cg *ConsumerGroup) assignTopicPartitions(conn coordinator, group joinGroupResponseV5) (GroupMemberAssignments, error) {
+func (cg *ConsumerGroup) assignTopicPartitions(conn coordinator, group joinGroupResponseV1) (GroupMemberAssignments, error) {
 	cg.withLogger(func(l Logger) {
 		l.Printf("selected as leader for group, %s\n", cg.config.ID)
 	})
@@ -1052,7 +1052,7 @@ func (cg *ConsumerGroup) assignTopicPartitions(conn coordinator, group joinGroup
 }
 
 // makeMemberProtocolMetadata maps encoded member metadata ([]byte) into []GroupMember.
-func (cg *ConsumerGroup) makeMemberProtocolMetadata(in []joinGroupResponseMemberV5) ([]GroupMember, error) {
+func (cg *ConsumerGroup) makeMemberProtocolMetadata(in []joinGroupResponseMemberV1) ([]GroupMember, error) {
 	members := make([]GroupMember, 0, len(in))
 	for _, item := range in {
 		metadata := groupMetadata{}
@@ -1062,10 +1062,9 @@ func (cg *ConsumerGroup) makeMemberProtocolMetadata(in []joinGroupResponseMember
 		}
 
 		members = append(members, GroupMember{
-			ID:              item.MemberID,
-			GroupInstanceID: item.GroupInstanceID,
-			Topics:          metadata.Topics,
-			UserData:        metadata.UserData,
+			ID:       item.MemberID,
+			Topics:   metadata.Topics,
+			UserData: metadata.UserData,
 		})
 	}
 	return members, nil
