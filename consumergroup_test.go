@@ -15,7 +15,7 @@ var _ coordinator = mockCoordinator{}
 type mockCoordinator struct {
 	closeFunc           func() error
 	findCoordinatorFunc func(findCoordinatorRequestV0) (findCoordinatorResponseV0, error)
-	joinGroupFunc       func(joinGroupRequestV5) (joinGroupResponseV5, error)
+	joinGroupFunc       func(JoinGroupRequest) (joinGroupResponseV5, error)
 	syncGroupFunc       func(syncGroupRequestV0) (syncGroupResponseV0, error)
 	leaveGroupFunc      func(leaveGroupRequestV0) (leaveGroupResponseV0, error)
 	heartbeatFunc       func(heartbeatRequestV0) (heartbeatResponseV0, error)
@@ -38,7 +38,7 @@ func (c mockCoordinator) findCoordinator(req findCoordinatorRequestV0) (findCoor
 	return c.findCoordinatorFunc(req)
 }
 
-func (c mockCoordinator) joinGroup(req joinGroupRequestV5) (joinGroupResponseV5, error) {
+func (c mockCoordinator) joinGroup(req JoinGroupRequest) (joinGroupResponseV5, error) {
 	if c.joinGroupFunc == nil {
 		return joinGroupResponseV5{}, errors.New("no joinGroup behavior specified")
 	}
@@ -419,7 +419,7 @@ func TestConsumerGroupErrors(t *testing.T) {
 						},
 					}, nil
 				}
-				mc.joinGroupFunc = func(joinGroupRequestV5) (joinGroupResponseV5, error) {
+				mc.joinGroupFunc = func(JoinGroupRequest) (joinGroupResponseV5, error) {
 					return joinGroupResponseV5{}, errors.New("join group failed")
 				}
 				// NOTE : no stub for leaving the group b/c the member never joined.
@@ -449,7 +449,7 @@ func TestConsumerGroupErrors(t *testing.T) {
 						},
 					}, nil
 				}
-				mc.joinGroupFunc = func(joinGroupRequestV5) (joinGroupResponseV5, error) {
+				mc.joinGroupFunc = func(JoinGroupRequest) (joinGroupResponseV5, error) {
 					return joinGroupResponseV5{
 						ErrorCode: int16(InvalidTopic),
 					}, nil
@@ -472,7 +472,7 @@ func TestConsumerGroupErrors(t *testing.T) {
 		{
 			scenario: "fails to join group (leader, unsupported protocol)",
 			prepare: func(mc *mockCoordinator) {
-				mc.joinGroupFunc = func(joinGroupRequestV5) (joinGroupResponseV5, error) {
+				mc.joinGroupFunc = func(JoinGroupRequest) (joinGroupResponseV5, error) {
 					return joinGroupResponseV5{
 						GenerationID:  12345,
 						GroupProtocol: "foo",
@@ -498,7 +498,7 @@ func TestConsumerGroupErrors(t *testing.T) {
 		{
 			scenario: "fails to sync group (general error)",
 			prepare: func(mc *mockCoordinator) {
-				mc.joinGroupFunc = func(joinGroupRequestV5) (joinGroupResponseV5, error) {
+				mc.joinGroupFunc = func(JoinGroupRequest) (joinGroupResponseV5, error) {
 					return joinGroupResponseV5{
 						GenerationID:  12345,
 						GroupProtocol: "range",
