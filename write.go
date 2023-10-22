@@ -498,33 +498,6 @@ func (wb *writeBuffer) writeRecordBatch(attributes int16, size int32, count int,
 	write(wb)
 }
 
-func (wb *writeBuffer) writeJoinGroupRequestV1(correlationID int32, groupID string, sessionTimeout, rebalanceTimeout time.Duration, memberID, protocolType string, groupProtocols []joinGroupRequestGroupProtocolV1) error {
-	h := requestHeader{
-		ApiKey:        int16(joinGroup),
-		ApiVersion:    int16(v1),
-		CorrelationID: correlationID,
-	}
-
-	h.Size = (h.size() - 4) +
-		sizeofString(groupID) +
-		sizeofInt32(milliseconds(sessionTimeout)) +
-		sizeofInt32(milliseconds(rebalanceTimeout)) +
-		sizeofString(memberID) +
-		sizeofString(protocolType) +
-		sizeofArray(len(groupProtocols), func(i int) int32 { return groupProtocols[i].size() })
-
-	h.writeTo(wb)
-
-	wb.writeString(groupID)
-	wb.writeInt32(milliseconds(sessionTimeout))
-	wb.writeInt32(milliseconds(rebalanceTimeout))
-	wb.writeString(memberID)
-	wb.writeString(protocolType)
-	wb.writeArray(len(groupProtocols), func(i int) { groupProtocols[i].writeTo(wb) })
-
-	return wb.Flush()
-}
-
 func compressMessageSet(codec CompressionCodec, msgs ...Message) (compressed *bytes.Buffer, attributes int8, size int32, err error) {
 	compressed = acquireBuffer()
 	compressor := codec.NewWriter(compressed)

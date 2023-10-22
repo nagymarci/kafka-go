@@ -940,9 +940,6 @@ func (cg *ConsumerGroup) joinGroup(conn coordinator, memberID string) (string, i
 	}
 
 	response, err := conn.joinGroup(request)
-	cg.withLogger(func(l Logger) {
-		l.Printf("join group response [%v]", response)
-	})
 	if err != nil {
 		return "", 0, nil, err
 	}

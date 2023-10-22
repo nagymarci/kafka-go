@@ -384,20 +384,7 @@ func (c *Conn) joinGroup(request JoinGroupRequest) (JoinGroupResponse, error) {
 				return nil
 			default:
 				return c.writeRequest(joinGroup, v1, id, request.toJoinGroupRequestV1())
-				// protocols := make([]joinGroupRequestGroupProtocolV1, len(request.Protocols))
-				// for i, v := range request.Protocols {
-				// 	protocols[i] = joinGroupRequestGroupProtocolV1{
-				// 		ProtocolName: v.Name,
-				// 		ProtocolMetadata: groupMetadata{
-				// 			Version:  1,
-				// 			Topics:   v.Metadata.Topics,
-				// 			UserData: v.Metadata.UserData,
-				// 		}.bytes(),
-				// 	}
-				// }
-				// return c.wb.writeJoinGroupRequestV1(id, request.GroupID, request.SessionTimeout, request.RebalanceTimeout, request.MemberID, request.ProtocolType, protocols)
 			}
-			//return c.writeRequest(joinGroup, v5, id, request)
 		},
 		func(deadline time.Time, size int) error {
 			return expectZeroSize(func() (remain int, err error) {
@@ -418,7 +405,6 @@ func (c *Conn) joinGroup(request JoinGroupRequest) (JoinGroupResponse, error) {
 
 					return remain, err
 				}
-				//return (&response).readFrom(&c.rbuf, size)
 			}())
 		},
 	)
