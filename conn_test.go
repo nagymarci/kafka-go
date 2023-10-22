@@ -679,7 +679,7 @@ func waitForCoordinator(t *testing.T, conn *Conn, groupID string) {
 func createGroup(t *testing.T, conn *Conn, groupID string) (generationID int32, memberID string, stop func()) {
 	waitForCoordinator(t, conn, groupID)
 
-	join := func() (joinGroup joinGroupResponseV1) {
+	join := func() (joinGroup JoinGroupResponse) {
 		var err error
 		for attempt := 0; attempt < 10; attempt++ {
 			joinGroup, err = conn.joinGroup(JoinGroupRequest{
@@ -717,7 +717,7 @@ func createGroup(t *testing.T, conn *Conn, groupID string) (generationID int32, 
 	// sync the group
 	_, err := conn.syncGroup(syncGroupRequestV0{
 		GroupID:      groupID,
-		GenerationID: joinGroup.GenerationID,
+		GenerationID: int32(joinGroup.GenerationID),
 		MemberID:     joinGroup.MemberID,
 		GroupAssignments: []syncGroupRequestGroupAssignmentV0{
 			{
@@ -730,7 +730,7 @@ func createGroup(t *testing.T, conn *Conn, groupID string) (generationID int32, 
 		t.Fatalf("bad syncGroup: %s", err)
 	}
 
-	generationID = joinGroup.GenerationID
+	generationID = int32(joinGroup.GenerationID)
 	memberID = joinGroup.MemberID
 	stop = func() {
 		conn.leaveGroup(leaveGroupRequestV0{

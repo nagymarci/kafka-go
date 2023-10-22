@@ -27,17 +27,17 @@ func TestFindMembersByTopic(t *testing.T) {
 
 	sa1 := GroupMember{
 		ID:              "a",
-		GroupInstanceID: &groupInstanceID1,
+		GroupInstanceID: groupInstanceID1,
 		Topics:          []string{"topic-1"},
 	}
 	sa12 := GroupMember{
 		ID:              "a",
-		GroupInstanceID: &groupInstanceID1,
+		GroupInstanceID: groupInstanceID1,
 		Topics:          []string{"topic-1", "topic-2"},
 	}
 	sb23 := GroupMember{
 		ID:              "b",
-		GroupInstanceID: &groupInstanceID2,
+		GroupInstanceID: groupInstanceID2,
 		Topics:          []string{"topic-2", "topic-3"},
 	}
 
@@ -451,17 +451,17 @@ func TestFindMembersByTopicSortsByGroupInstanceID(t *testing.T) {
 	topic := "topic-1"
 	a := GroupMember{
 		ID:              "a",
-		GroupInstanceID: &groupInstanceID3,
+		GroupInstanceID: groupInstanceID3,
 		Topics:          []string{topic},
 	}
 	b := GroupMember{
 		ID:              "b",
-		GroupInstanceID: &groupInstanceID2,
+		GroupInstanceID: groupInstanceID2,
 		Topics:          []string{topic},
 	}
 	c := GroupMember{
 		ID:              "c",
-		GroupInstanceID: &groupInstanceID1,
+		GroupInstanceID: groupInstanceID1,
 		Topics:          []string{topic},
 	}
 
@@ -495,7 +495,7 @@ func TestFindMembersByTopicSortsByGroupInstanceIDAndMemberID(t *testing.T) {
 	topic := "topic-1"
 	a := GroupMember{
 		ID:              "a",
-		GroupInstanceID: &groupInstanceID3,
+		GroupInstanceID: groupInstanceID3,
 		Topics:          []string{topic},
 	}
 	b := GroupMember{
@@ -504,7 +504,7 @@ func TestFindMembersByTopicSortsByGroupInstanceIDAndMemberID(t *testing.T) {
 	}
 	c := GroupMember{
 		ID:              "c",
-		GroupInstanceID: &groupInstanceID1,
+		GroupInstanceID: groupInstanceID1,
 		Topics:          []string{topic},
 	}
 

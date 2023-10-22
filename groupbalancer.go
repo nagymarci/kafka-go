@@ -9,7 +9,7 @@ type GroupMember struct {
 	// ID is the unique ID for this member as taken from the JoinGroup response.
 	ID string
 
-	GroupInstanceID *string
+	GroupInstanceID string
 
 	// Topics is a list of topics that this member is consuming.
 	Topics []string
@@ -326,13 +326,13 @@ func findMembersByTopic(members []GroupMember) map[string][]GroupMember {
 	//
 	for _, members := range membersByTopic {
 		sort.Slice(members, func(i, j int) bool {
-			if members[i].GroupInstanceID != nil && members[j].GroupInstanceID != nil {
-				return *members[i].GroupInstanceID < *members[j].GroupInstanceID
+			if members[i].GroupInstanceID != "" && members[j].GroupInstanceID != "" {
+				return members[i].GroupInstanceID < members[j].GroupInstanceID
 			}
-			if members[i].GroupInstanceID != nil {
+			if members[i].GroupInstanceID != "" {
 				return true
 			}
-			if members[j].GroupInstanceID != nil {
+			if members[j].GroupInstanceID != "" {
 				return false
 			}
 			return members[i].ID < members[j].ID

@@ -41,6 +41,30 @@ type JoinGroupRequest struct {
 	Protocols []GroupProtocol
 }
 
+func (jgr JoinGroupRequest) toJoinGroupRequestV1() joinGroupRequestV1 {
+	request := joinGroupRequestV1{
+		GroupID:          jgr.GroupID,
+		SessionTimeout:   int32(jgr.SessionTimeout / time.Millisecond),
+		RebalanceTimeout: int32(jgr.RebalanceTimeout / time.Millisecond),
+		MemberID:         jgr.MemberID,
+		ProtocolType:     jgr.ProtocolType,
+	}
+
+	request.GroupProtocols = make([]joinGroupRequestGroupProtocolV1, len(jgr.Protocols))
+	for i, v := range jgr.Protocols {
+		request.GroupProtocols[i] = joinGroupRequestGroupProtocolV1{
+			ProtocolName: v.Name,
+			ProtocolMetadata: groupMetadata{
+				Version:  1,
+				Topics:   v.Metadata.Topics,
+				UserData: v.Metadata.UserData,
+			}.bytes(),
+		}
+	}
+
+	return request
+}
+
 // GroupProtocol represents a consumer group protocol.
 type GroupProtocol struct {
 	// The protocol name.
@@ -93,7 +117,7 @@ type JoinGroupResponse struct {
 
 // JoinGroupResponseMember represents a group memmber in a reponse to a JoinGroup request.
 type JoinGroupResponseMember struct {
-	// The group memmber ID.
+	// The group member ID.
 	ID string
 
 	// The unique identifier of the consumer instance.
@@ -374,4 +398,37 @@ func (t *joinGroupResponseV1) readFrom(r *bufio.Reader, size int) (remain int, e
 	}
 
 	return
+}
+
+func (jgr joinGroupResponseV1) toJoinGroupResponse() (JoinGroupResponse, error) {
+	resp := JoinGroupResponse{
+		GenerationID: int(jgr.GenerationID),
+		ProtocolName: jgr.GroupProtocol,
+		LeaderID:     jgr.LeaderID,
+		MemberID:     jgr.MemberID,
+	}
+
+	if jgr.ErrorCode != 0 {
+		resp.Error = Error(jgr.ErrorCode)
+	}
+
+	for _, item := range jgr.Members {
+		metadata := groupMetadata{}
+		reader := bufio.NewReader(bytes.NewReader(item.MemberMetadata))
+		if remain, err := (&metadata).readFrom(reader, len(item.MemberMetadata)); err != nil || remain != 0 {
+			return JoinGroupResponse{}, fmt.Errorf("unable to read metadata for member, %v: %w", item.MemberID, err)
+		}
+
+		resp.Members = make([]JoinGroupResponseMember, len(jgr.Members))
+
+		resp.Members = append(resp.Members, JoinGroupResponseMember{
+			ID: item.MemberID,
+			Metadata: GroupProtocolSubscription{
+				Topics:   metadata.Topics,
+				UserData: metadata.UserData,
+			},
+		})
+	}
+
+	return resp, nil
 }

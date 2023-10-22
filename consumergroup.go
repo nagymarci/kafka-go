@@ -69,7 +69,7 @@ type ConsumerGroupConfig struct {
 	// ID is the consumer group ID.  It must not be empty.
 	ID string
 
-	GroupInstanceID *string
+	GroupInstanceID string
 
 	// The list of broker addresses used to connect to the kafka cluster.  It
 	// must not be empty.
@@ -557,7 +557,7 @@ func (g *Generation) partitionWatcher(interval time.Duration, topic string) {
 type coordinator interface {
 	io.Closer
 	findCoordinator(findCoordinatorRequestV0) (findCoordinatorResponseV0, error)
-	joinGroup(JoinGroupRequest) (joinGroupResponseV1, error)
+	joinGroup(JoinGroupRequest) (JoinGroupResponse, error)
 	syncGroup(syncGroupRequestV0) (syncGroupResponseV0, error)
 	leaveGroup(leaveGroupRequestV0) (leaveGroupResponseV0, error)
 	heartbeat(heartbeatRequestV0) (heartbeatResponseV0, error)
@@ -590,11 +590,11 @@ func (t *timeoutCoordinator) findCoordinator(req findCoordinatorRequestV0) (find
 	return t.conn.findCoordinator(req)
 }
 
-func (t *timeoutCoordinator) joinGroup(request JoinGroupRequest) (joinGroupResponseV1, error) {
+func (t *timeoutCoordinator) joinGroup(request JoinGroupRequest) (JoinGroupResponse, error) {
 	// in the case of join group, the consumer group coordinator may wait up
 	// to rebalance timeout in order to wait for all members to join.
 	if err := t.conn.SetDeadline(time.Now().Add(t.timeout + t.rebalanceTimeout)); err != nil {
-		return joinGroupResponseV1{}, err
+		return JoinGroupResponse{}, err
 	}
 	return t.conn.joinGroup(request)
 }
@@ -940,15 +940,15 @@ func (cg *ConsumerGroup) joinGroup(conn coordinator, memberID string) (string, i
 	}
 
 	response, err := conn.joinGroup(request)
-	if err == nil && response.ErrorCode != 0 {
-		err = Error(response.ErrorCode)
-	}
+	cg.withLogger(func(l Logger) {
+		l.Printf("join group response [%v]", response)
+	})
 	if err != nil {
 		return "", 0, nil, err
 	}
 
 	memberID = response.MemberID
-	generationID := response.GenerationID
+	generationID := int32(response.GenerationID)
 
 	cg.withLogger(func(l Logger) {
 		l.Printf("joined group %s as member %s in generation %d", cg.config.ID, memberID, generationID)
@@ -986,8 +986,8 @@ func (cg *ConsumerGroup) makeJoinGroupRequest(memberID string) (JoinGroupRequest
 		MemberID:         memberID,
 		SessionTimeout:   cg.config.SessionTimeout,
 		RebalanceTimeout: cg.config.RebalanceTimeout,
-		//GroupInstanceID:  cg.config.GroupInstanceID,
-		ProtocolType: defaultProtocolType,
+		GroupInstanceID:  cg.config.GroupInstanceID,
+		ProtocolType:     defaultProtocolType,
 	}
 
 	for _, balancer := range cg.config.GroupBalancers {
@@ -1009,17 +1009,17 @@ func (cg *ConsumerGroup) makeJoinGroupRequest(memberID string) (JoinGroupRequest
 
 // assignTopicPartitions uses the selected GroupBalancer to assign members to
 // their various partitions.
-func (cg *ConsumerGroup) assignTopicPartitions(conn coordinator, group joinGroupResponseV1) (GroupMemberAssignments, error) {
+func (cg *ConsumerGroup) assignTopicPartitions(conn coordinator, group JoinGroupResponse) (GroupMemberAssignments, error) {
 	cg.withLogger(func(l Logger) {
 		l.Printf("selected as leader for group, %s\n", cg.config.ID)
 	})
 
-	balancer, ok := findGroupBalancer(group.GroupProtocol, cg.config.GroupBalancers)
+	balancer, ok := findGroupBalancer(group.ProtocolName, cg.config.GroupBalancers)
 	if !ok {
 		// NOTE : this shouldn't happen in practice...the broker should not
 		//        return successfully from joinGroup unless all members support
 		//        at least one common protocol.
-		return nil, fmt.Errorf("unable to find selected balancer, %v, for group, %v", group.GroupProtocol, cg.config.ID)
+		return nil, fmt.Errorf("unable to find selected balancer, %v, for group, %v", group.ProtocolName, cg.config.ID)
 	}
 
 	members, err := cg.makeMemberProtocolMetadata(group.Members)
@@ -1039,7 +1039,7 @@ func (cg *ConsumerGroup) assignTopicPartitions(conn coordinator, group joinGroup
 	}
 
 	cg.withLogger(func(l Logger) {
-		l.Printf("using '%v' balancer to assign group, %v", group.GroupProtocol, cg.config.ID)
+		l.Printf("using '%v' balancer to assign group, %v", group.ProtocolName, cg.config.ID)
 		for _, member := range members {
 			l.Printf("found member: %v/%#v", member.ID, member.UserData)
 		}
@@ -1052,19 +1052,15 @@ func (cg *ConsumerGroup) assignTopicPartitions(conn coordinator, group joinGroup
 }
 
 // makeMemberProtocolMetadata maps encoded member metadata ([]byte) into []GroupMember.
-func (cg *ConsumerGroup) makeMemberProtocolMetadata(in []joinGroupResponseMemberV1) ([]GroupMember, error) {
+func (cg *ConsumerGroup) makeMemberProtocolMetadata(in []JoinGroupResponseMember) ([]GroupMember, error) {
 	members := make([]GroupMember, 0, len(in))
 	for _, item := range in {
-		metadata := groupMetadata{}
-		reader := bufio.NewReader(bytes.NewReader(item.MemberMetadata))
-		if remain, err := (&metadata).readFrom(reader, len(item.MemberMetadata)); err != nil || remain != 0 {
-			return nil, fmt.Errorf("unable to read metadata for member, %v: %w", item.MemberID, err)
-		}
 
 		members = append(members, GroupMember{
-			ID:       item.MemberID,
-			Topics:   metadata.Topics,
-			UserData: metadata.UserData,
+			ID:              item.ID,
+			GroupInstanceID: item.GroupInstanceID,
+			Topics:          item.Metadata.Topics,
+			UserData:        item.Metadata.UserData,
 		})
 	}
 	return members, nil
@@ -1211,7 +1207,7 @@ func (cg *ConsumerGroup) leaveGroup(memberID string) error {
 	}
 
 	// don't attempt to leave the group if group instance id is configured
-	if cg.config.GroupInstanceID != nil {
+	if cg.config.GroupInstanceID != "" {
 		return nil
 	}
 

@@ -368,13 +368,12 @@ func (c *Conn) heartbeat(request heartbeatRequestV0) (heartbeatResponseV0, error
 // joinGroup attempts to join a consumer group
 //
 // See http://kafka.apache.org/protocol.html#The_Messages_JoinGroup
-func (c *Conn) joinGroup(request JoinGroupRequest) (joinGroupResponseV1, error) {
-	var response joinGroupResponseV1
-
+func (c *Conn) joinGroup(request JoinGroupRequest) (JoinGroupResponse, error) {
+	var response JoinGroupResponse
 	var joinGroupVersion apiVersion
 	joinGroupVersion, err := c.negotiateVersion(joinGroup, v1) // TODO: add v5
 	if err != nil {
-		return joinGroupResponseV1{}, err // TODO
+		return JoinGroupResponse{}, err // TODO
 	}
 
 	err = c.writeOperation(
@@ -384,32 +383,50 @@ func (c *Conn) joinGroup(request JoinGroupRequest) (joinGroupResponseV1, error) 
 				// TODO
 				return nil
 			default:
-				protocols := make([]joinGroupRequestGroupProtocolV1, len(request.Protocols))
-				for i, v := range request.Protocols {
-					protocols[i] = joinGroupRequestGroupProtocolV1{
-						ProtocolName: v.Name,
-						ProtocolMetadata: groupMetadata{
-							Version:  1,
-							Topics:   v.Metadata.Topics,
-							UserData: v.Metadata.UserData,
-						}.bytes(),
-					}
-				}
-				return c.wb.writeJoinGroupRequestV1(id, request.GroupID, request.SessionTimeout, request.RebalanceTimeout, request.MemberID, request.ProtocolType, protocols)
+				return c.writeRequest(joinGroup, v1, id, request.toJoinGroupRequestV1())
+				// protocols := make([]joinGroupRequestGroupProtocolV1, len(request.Protocols))
+				// for i, v := range request.Protocols {
+				// 	protocols[i] = joinGroupRequestGroupProtocolV1{
+				// 		ProtocolName: v.Name,
+				// 		ProtocolMetadata: groupMetadata{
+				// 			Version:  1,
+				// 			Topics:   v.Metadata.Topics,
+				// 			UserData: v.Metadata.UserData,
+				// 		}.bytes(),
+				// 	}
+				// }
+				// return c.wb.writeJoinGroupRequestV1(id, request.GroupID, request.SessionTimeout, request.RebalanceTimeout, request.MemberID, request.ProtocolType, protocols)
 			}
 			//return c.writeRequest(joinGroup, v5, id, request)
 		},
 		func(deadline time.Time, size int) error {
 			return expectZeroSize(func() (remain int, err error) {
-				return (&response).readFrom(&c.rbuf, size)
+				// TODO: handle different versions
+				switch joinGroupVersion {
+				case v5:
+					// TODO
+					return 0, nil
+				default:
+					var resp joinGroupResponseV1
+					remain, err := (&resp).readFrom(&c.rbuf, size)
+
+					if err != nil {
+						return remain, err
+					}
+
+					response, err = resp.toJoinGroupResponse()
+
+					return remain, err
+				}
+				//return (&response).readFrom(&c.rbuf, size)
 			}())
 		},
 	)
 	if err != nil {
-		return joinGroupResponseV1{}, err
+		return JoinGroupResponse{}, err
 	}
-	if response.ErrorCode != 0 {
-		return joinGroupResponseV1{}, Error(response.ErrorCode)
+	if response.Error != nil {
+		return JoinGroupResponse{}, response.Error
 	}
 
 	return response, nil
