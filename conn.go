@@ -368,27 +368,29 @@ func (c *Conn) heartbeat(request heartbeatRequestV0) (heartbeatResponseV0, error
 // joinGroup attempts to join a consumer group
 //
 // See http://kafka.apache.org/protocol.html#The_Messages_JoinGroup
-func (c *Conn) joinGroup(request JoinGroupRequest) (JoinGroupResponse, error) {
-	var response JoinGroupResponse
+func (c *Conn) joinGroup(request joinGroupRequest) (joinGroupResponse, error) {
+	var response joinGroupResponse
 	var joinGroupVersion apiVersion
-	joinGroupVersion, err := c.negotiateVersion(joinGroup, v1) // TODO: add v5
+	joinGroupVersion, err := c.negotiateVersion(joinGroup, v1, v5) // TODO: add v5
 	if err != nil {
-		return JoinGroupResponse{}, err // TODO
+		return joinGroupResponse{}, err // TODO
+	}
+
+	if joinGroupVersion < v5 && request.GroupInstanceID != nil {
+		return joinGroupResponse{}, fmt.Errorf("Broker protocol version %d does not support static membership", joinGroupVersion)
 	}
 
 	err = c.writeOperation(
 		func(deadline time.Time, id int32) error {
 			switch joinGroupVersion {
 			case v5:
-				// TODO
-				return nil
+				return c.writeRequest(joinGroup, v5, id, request.toJoinGroupRequestV5())
 			default:
 				return c.writeRequest(joinGroup, v1, id, request.toJoinGroupRequestV1())
 			}
 		},
 		func(deadline time.Time, size int) error {
 			return expectZeroSize(func() (remain int, err error) {
-				// TODO: handle different versions
 				switch joinGroupVersion {
 				case v5:
 					// TODO
@@ -409,10 +411,10 @@ func (c *Conn) joinGroup(request JoinGroupRequest) (JoinGroupResponse, error) {
 		},
 	)
 	if err != nil {
-		return JoinGroupResponse{}, err
+		return joinGroupResponse{}, err
 	}
 	if response.Error != nil {
-		return JoinGroupResponse{}, response.Error
+		return joinGroupResponse{}, response.Error
 	}
 
 	return response, nil

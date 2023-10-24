@@ -69,7 +69,7 @@ type ConsumerGroupConfig struct {
 	// ID is the consumer group ID.  It must not be empty.
 	ID string
 
-	GroupInstanceID string
+	GroupInstanceID *string
 
 	// The list of broker addresses used to connect to the kafka cluster.  It
 	// must not be empty.
@@ -557,7 +557,7 @@ func (g *Generation) partitionWatcher(interval time.Duration, topic string) {
 type coordinator interface {
 	io.Closer
 	findCoordinator(findCoordinatorRequestV0) (findCoordinatorResponseV0, error)
-	joinGroup(JoinGroupRequest) (JoinGroupResponse, error)
+	joinGroup(joinGroupRequest) (joinGroupResponse, error)
 	syncGroup(syncGroupRequestV0) (syncGroupResponseV0, error)
 	leaveGroup(leaveGroupRequestV0) (leaveGroupResponseV0, error)
 	heartbeat(heartbeatRequestV0) (heartbeatResponseV0, error)
@@ -590,11 +590,11 @@ func (t *timeoutCoordinator) findCoordinator(req findCoordinatorRequestV0) (find
 	return t.conn.findCoordinator(req)
 }
 
-func (t *timeoutCoordinator) joinGroup(request JoinGroupRequest) (JoinGroupResponse, error) {
+func (t *timeoutCoordinator) joinGroup(request joinGroupRequest) (joinGroupResponse, error) {
 	// in the case of join group, the consumer group coordinator may wait up
 	// to rebalance timeout in order to wait for all members to join.
 	if err := t.conn.SetDeadline(time.Now().Add(t.timeout + t.rebalanceTimeout)); err != nil {
-		return JoinGroupResponse{}, err
+		return joinGroupResponse{}, err
 	}
 	return t.conn.joinGroup(request)
 }
@@ -977,8 +977,8 @@ func (cg *ConsumerGroup) joinGroup(conn coordinator, memberID string) (string, i
 
 // makeJoinGroupRequest handles the logic of constructing a joinGroup
 // request.
-func (cg *ConsumerGroup) makeJoinGroupRequest(memberID string) (JoinGroupRequest, error) {
-	request := JoinGroupRequest{
+func (cg *ConsumerGroup) makeJoinGroupRequest(memberID string) (joinGroupRequest, error) {
+	request := joinGroupRequest{
 		GroupID:          cg.config.ID,
 		MemberID:         memberID,
 		SessionTimeout:   cg.config.SessionTimeout,
@@ -990,7 +990,7 @@ func (cg *ConsumerGroup) makeJoinGroupRequest(memberID string) (JoinGroupRequest
 	for _, balancer := range cg.config.GroupBalancers {
 		userData, err := balancer.UserData()
 		if err != nil {
-			return JoinGroupRequest{}, fmt.Errorf("unable to construct protocol metadata for member, %v: %w", balancer.ProtocolName(), err)
+			return joinGroupRequest{}, fmt.Errorf("unable to construct protocol metadata for member, %v: %w", balancer.ProtocolName(), err)
 		}
 		request.Protocols = append(request.Protocols, GroupProtocol{
 			Name: balancer.ProtocolName(),
@@ -1006,7 +1006,7 @@ func (cg *ConsumerGroup) makeJoinGroupRequest(memberID string) (JoinGroupRequest
 
 // assignTopicPartitions uses the selected GroupBalancer to assign members to
 // their various partitions.
-func (cg *ConsumerGroup) assignTopicPartitions(conn coordinator, group JoinGroupResponse) (GroupMemberAssignments, error) {
+func (cg *ConsumerGroup) assignTopicPartitions(conn coordinator, group joinGroupResponse) (GroupMemberAssignments, error) {
 	cg.withLogger(func(l Logger) {
 		l.Printf("selected as leader for group, %s\n", cg.config.ID)
 	})
@@ -1049,7 +1049,7 @@ func (cg *ConsumerGroup) assignTopicPartitions(conn coordinator, group JoinGroup
 }
 
 // makeMemberProtocolMetadata maps encoded member metadata ([]byte) into []GroupMember.
-func (cg *ConsumerGroup) makeMemberProtocolMetadata(in []JoinGroupResponseMember) ([]GroupMember, error) {
+func (cg *ConsumerGroup) makeMemberProtocolMetadata(in []joinGroupResponseMember) ([]GroupMember, error) {
 	members := make([]GroupMember, 0, len(in))
 	for _, item := range in {
 
@@ -1204,7 +1204,7 @@ func (cg *ConsumerGroup) leaveGroup(memberID string) error {
 	}
 
 	// don't attempt to leave the group if group instance id is configured
-	if cg.config.GroupInstanceID != "" {
+	if cg.config.GroupInstanceID != nil {
 		return nil
 	}
 

@@ -41,30 +41,6 @@ type JoinGroupRequest struct {
 	Protocols []GroupProtocol
 }
 
-func (jgr JoinGroupRequest) toJoinGroupRequestV1() joinGroupRequestV1 {
-	request := joinGroupRequestV1{
-		GroupID:          jgr.GroupID,
-		SessionTimeout:   int32(jgr.SessionTimeout / time.Millisecond),
-		RebalanceTimeout: int32(jgr.RebalanceTimeout / time.Millisecond),
-		MemberID:         jgr.MemberID,
-		ProtocolType:     jgr.ProtocolType,
-	}
-
-	request.GroupProtocols = make([]joinGroupRequestGroupProtocolV1, len(jgr.Protocols))
-	for i, v := range jgr.Protocols {
-		request.GroupProtocols[i] = joinGroupRequestGroupProtocolV1{
-			ProtocolName: v.Name,
-			ProtocolMetadata: groupMetadata{
-				Version:  1,
-				Topics:   v.Metadata.Topics,
-				UserData: v.Metadata.UserData,
-			}.bytes(),
-		}
-	}
-
-	return request
-}
-
 // GroupProtocol represents a consumer group protocol.
 type GroupProtocol struct {
 	// The protocol name.
@@ -400,9 +376,119 @@ func (t *joinGroupResponseV1) readFrom(r *bufio.Reader, size int) (remain int, e
 	return
 }
 
-func (jgr joinGroupResponseV1) toJoinGroupResponse() (JoinGroupResponse, error) {
-	resp := JoinGroupResponse{
-		GenerationID: int(jgr.GenerationID),
+type joinGroupRequestV5 struct {
+	joinGroupRequestV1
+
+	GroupInstanceID *string
+}
+
+func (t joinGroupRequestV5) size() int32 {
+	return sizeofString(t.GroupID) +
+		sizeofInt32(t.SessionTimeout) +
+		sizeofInt32(t.RebalanceTimeout) +
+		sizeofString(t.MemberID) +
+		sizeofNullableString(t.GroupInstanceID) +
+		sizeofString(t.ProtocolType) +
+		sizeofArray(len(t.GroupProtocols), func(i int) int32 { return t.GroupProtocols[i].size() })
+}
+
+func (t joinGroupRequestV5) writeTo(wb *writeBuffer) {
+	wb.writeString(t.GroupID)
+	wb.writeInt32(t.SessionTimeout)
+	wb.writeInt32(t.RebalanceTimeout)
+	wb.writeString(t.MemberID)
+	wb.writeNullableString(t.GroupInstanceID)
+	wb.writeString(t.ProtocolType)
+	wb.writeArray(len(t.GroupProtocols), func(i int) { t.GroupProtocols[i].writeTo(wb) })
+}
+
+type joinGroupRequest struct {
+	GroupID          string
+	SessionTimeout   time.Duration
+	RebalanceTimeout time.Duration
+	MemberID         string
+	GroupInstanceID  *string
+	ProtocolType     string
+	Protocols        []GroupProtocol
+}
+
+func (jgr joinGroupRequest) toJoinGroupRequestV1() joinGroupRequestV1 {
+	request := joinGroupRequestV1{
+		GroupID:          jgr.GroupID,
+		SessionTimeout:   int32(jgr.SessionTimeout / time.Millisecond),
+		RebalanceTimeout: int32(jgr.RebalanceTimeout / time.Millisecond),
+		MemberID:         jgr.MemberID,
+		ProtocolType:     jgr.ProtocolType,
+	}
+
+	request.GroupProtocols = make([]joinGroupRequestGroupProtocolV1, len(jgr.Protocols))
+	for i, v := range jgr.Protocols {
+		request.GroupProtocols[i] = joinGroupRequestGroupProtocolV1{
+			ProtocolName: v.Name,
+			ProtocolMetadata: groupMetadata{
+				Version:  1,
+				Topics:   v.Metadata.Topics,
+				UserData: v.Metadata.UserData,
+			}.bytes(),
+		}
+	}
+
+	return request
+}
+
+func (jgr joinGroupRequest) toJoinGroupRequestV5() joinGroupRequestV5 {
+	request := joinGroupRequestV5{
+		joinGroupRequestV1: joinGroupRequestV1{
+			GroupID:          jgr.GroupID,
+			SessionTimeout:   int32(jgr.SessionTimeout / time.Millisecond),
+			RebalanceTimeout: int32(jgr.RebalanceTimeout / time.Millisecond),
+			MemberID:         jgr.MemberID,
+			ProtocolType:     jgr.ProtocolType,
+		},
+	}
+
+	if jgr.GroupInstanceID != nil {
+		request.GroupInstanceID = jgr.GroupInstanceID
+	}
+
+	request.GroupProtocols = make([]joinGroupRequestGroupProtocolV1, len(jgr.Protocols))
+	for i, v := range jgr.Protocols {
+		request.GroupProtocols[i] = joinGroupRequestGroupProtocolV1{
+			ProtocolName: v.Name,
+			ProtocolMetadata: groupMetadata{
+				Version:  1,
+				Topics:   v.Metadata.Topics,
+				UserData: v.Metadata.UserData,
+			}.bytes(),
+		}
+	}
+
+	return request
+}
+
+type joinGroupResponse struct {
+	GenerationID int32
+	ProtocolName string
+	LeaderID     string
+	MemberID     string
+	Error        error
+	Members      []joinGroupResponseMember
+}
+
+type joinGroupResponseMember struct {
+	// The group member ID.
+	ID string
+
+	// The unique identifier of the consumer instance.
+	GroupInstanceID *string
+
+	// The group member metadata.
+	Metadata GroupProtocolSubscription
+}
+
+func (jgr joinGroupResponseV1) toJoinGroupResponse() (joinGroupResponse, error) {
+	resp := joinGroupResponse{
+		GenerationID: jgr.GenerationID,
 		ProtocolName: jgr.GroupProtocol,
 		LeaderID:     jgr.LeaderID,
 		MemberID:     jgr.MemberID,
@@ -416,12 +502,12 @@ func (jgr joinGroupResponseV1) toJoinGroupResponse() (JoinGroupResponse, error) 
 		metadata := groupMetadata{}
 		reader := bufio.NewReader(bytes.NewReader(item.MemberMetadata))
 		if remain, err := (&metadata).readFrom(reader, len(item.MemberMetadata)); err != nil || remain != 0 {
-			return JoinGroupResponse{}, fmt.Errorf("unable to read metadata for member, %v: %w", item.MemberID, err)
+			return joinGroupResponse{}, fmt.Errorf("unable to read metadata for member, %v: %w", item.MemberID, err)
 		}
 
-		resp.Members = make([]JoinGroupResponseMember, len(jgr.Members))
+		resp.Members = make([]joinGroupResponseMember, 0, len(jgr.Members))
 
-		resp.Members = append(resp.Members, JoinGroupResponseMember{
+		resp.Members = append(resp.Members, joinGroupResponseMember{
 			ID: item.MemberID,
 			Metadata: GroupProtocolSubscription{
 				Topics:   metadata.Topics,
