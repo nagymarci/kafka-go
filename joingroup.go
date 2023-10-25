@@ -445,10 +445,7 @@ func (jgr joinGroupRequest) toJoinGroupRequestV5() joinGroupRequestV5 {
 			MemberID:         jgr.MemberID,
 			ProtocolType:     jgr.ProtocolType,
 		},
-	}
-
-	if jgr.GroupInstanceID != nil {
-		request.GroupInstanceID = jgr.GroupInstanceID
+		GroupInstanceID: jgr.GroupInstanceID,
 	}
 
 	request.GroupProtocols = make([]joinGroupRequestGroupProtocolV1, len(jgr.Protocols))
@@ -509,6 +506,147 @@ func (jgr joinGroupResponseV1) toJoinGroupResponse() (joinGroupResponse, error) 
 
 		resp.Members = append(resp.Members, joinGroupResponseMember{
 			ID: item.MemberID,
+			Metadata: GroupProtocolSubscription{
+				Topics:   metadata.Topics,
+				UserData: metadata.UserData,
+			},
+		})
+	}
+
+	return resp, nil
+}
+
+type joinGroupResponseV5 struct {
+	ThrottleTimeMS int32
+
+	// ErrorCode holds response error code
+	ErrorCode int16
+
+	// GenerationID holds the generation of the group.
+	GenerationID int32
+
+	// GroupProtocol holds the group protocol selected by the coordinator
+	ProtocolName string
+
+	// LeaderID holds the leader of the group
+	LeaderID string
+
+	// MemberID assigned by the group coordinator
+	MemberID string
+	Members  []joinGroupResponseMemberV5
+}
+
+func (t joinGroupResponseV5) size() int32 {
+	return sizeofInt32(t.ThrottleTimeMS) +
+		sizeofInt16(t.ErrorCode) +
+		sizeofInt32(t.GenerationID) +
+		sizeofString(t.ProtocolName) +
+		sizeofString(t.LeaderID) +
+		sizeofString(t.MemberID) +
+		sizeofArray(len(t.MemberID), func(i int) int32 { return t.Members[i].size() })
+}
+
+func (t joinGroupResponseV5) writeTo(wb *writeBuffer) {
+	wb.writeInt32(t.ThrottleTimeMS)
+	wb.writeInt16(t.ErrorCode)
+	wb.writeInt32(t.GenerationID)
+	wb.writeString(t.ProtocolName)
+	wb.writeString(t.LeaderID)
+	wb.writeString(t.MemberID)
+	wb.writeArray(len(t.Members), func(i int) { t.Members[i].writeTo(wb) })
+}
+
+func (t *joinGroupResponseV5) readFrom(r *bufio.Reader, size int) (remain int, err error) {
+	if remain, err = readInt32(r, size, &t.ThrottleTimeMS); err != nil {
+		return
+	}
+	if remain, err = readInt16(r, remain, &t.ErrorCode); err != nil {
+		return
+	}
+	if remain, err = readInt32(r, remain, &t.GenerationID); err != nil {
+		return
+	}
+	if remain, err = readString(r, remain, &t.ProtocolName); err != nil {
+		return
+	}
+	if remain, err = readString(r, remain, &t.LeaderID); err != nil {
+		return
+	}
+	if remain, err = readString(r, remain, &t.MemberID); err != nil {
+		return
+	}
+
+	fn := func(r *bufio.Reader, size int) (fnRemain int, fnErr error) {
+		var item joinGroupResponseMemberV5
+		if fnRemain, fnErr = (&item).readFrom(r, size); fnErr != nil {
+			return
+		}
+		t.Members = append(t.Members, item)
+		return
+	}
+	if remain, err = readArrayWith(r, remain, fn); err != nil {
+		return
+	}
+
+	return
+}
+
+type joinGroupResponseMemberV5 struct {
+	// MemberID assigned by the group coordinator
+	MemberID        string
+	GroupInstanceID *string
+	MemberMetadata  []byte
+}
+
+func (t joinGroupResponseMemberV5) size() int32 {
+	return sizeofString(t.MemberID) +
+		sizeofNullableString(t.GroupInstanceID) +
+		sizeofBytes(t.MemberMetadata)
+}
+
+func (t joinGroupResponseMemberV5) writeTo(wb *writeBuffer) {
+	wb.writeString(t.MemberID)
+	wb.writeNullableString(t.GroupInstanceID)
+	wb.writeBytes(t.MemberMetadata)
+}
+
+func (t *joinGroupResponseMemberV5) readFrom(r *bufio.Reader, size int) (remain int, err error) {
+	if remain, err = readString(r, size, &t.MemberID); err != nil {
+		return
+	}
+	if remain, err = readNullableString(r, remain, t.GroupInstanceID); err != nil {
+		return
+	}
+	if remain, err = readBytes(r, remain, &t.MemberMetadata); err != nil {
+		return
+	}
+	return
+}
+
+func (jgr joinGroupResponseV5) toJoinGroupResponse() (joinGroupResponse, error) {
+	resp := joinGroupResponse{
+		GenerationID: jgr.GenerationID,
+		ProtocolName: jgr.ProtocolName,
+		LeaderID:     jgr.LeaderID,
+		MemberID:     jgr.MemberID,
+	}
+
+	if jgr.ErrorCode != 0 {
+		resp.Error = Error(jgr.ErrorCode)
+	}
+
+	for _, item := range jgr.Members {
+		metadata := groupMetadata{}
+		reader := bufio.NewReader(bytes.NewReader(item.MemberMetadata))
+		if remain, err := (&metadata).readFrom(reader, len(item.MemberMetadata)); err != nil || remain != 0 {
+			return joinGroupResponse{}, fmt.Errorf("unable to read metadata for member, %v: %w", item.MemberID, err)
+		}
+
+		resp.Members = make([]joinGroupResponseMember, 0, len(jgr.Members))
+
+		resp.Members = append(resp.Members, joinGroupResponseMember{
+			ID:              item.MemberID,
+			GroupInstanceID: item.GroupInstanceID,
 			Metadata: GroupProtocolSubscription{
 				Topics:   metadata.Topics,
 				UserData: metadata.UserData,

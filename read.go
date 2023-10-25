@@ -119,6 +119,34 @@ func readNewString(r *bufio.Reader, sz int, n int) (string, int, error) {
 	return string(b), sz, err
 }
 
+func readNullableStringWith(r *bufio.Reader, sz int, cb func(*bufio.Reader, int, int) (int, error)) (int, error) {
+	var err error
+	var len int16
+
+	if sz, err = readInt16(r, sz, &len); err != nil {
+		return sz, err
+	}
+
+	n := int(len)
+
+	if n == -1 {
+		return sz, err
+	}
+
+	if n > sz {
+		return sz, errShortRead
+	}
+
+	return cb(r, sz, n)
+}
+
+func readNullableString(r *bufio.Reader, sz int, v *string) (int, error) {
+	return readNullableStringWith(r, sz, func(r *bufio.Reader, sz int, n int) (remain int, err error) {
+		*v, remain, err = readNewString(r, sz, n)
+		return
+	})
+}
+
 func readBytes(r *bufio.Reader, sz int, v *[]byte) (int, error) {
 	return readBytesWith(r, sz, func(r *bufio.Reader, sz int, n int) (remain int, err error) {
 		*v, remain, err = readNewBytes(r, sz, n)

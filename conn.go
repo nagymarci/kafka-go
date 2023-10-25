@@ -371,9 +371,9 @@ func (c *Conn) heartbeat(request heartbeatRequestV0) (heartbeatResponseV0, error
 func (c *Conn) joinGroup(request joinGroupRequest) (joinGroupResponse, error) {
 	var response joinGroupResponse
 	var joinGroupVersion apiVersion
-	joinGroupVersion, err := c.negotiateVersion(joinGroup, v1, v5) // TODO: add v5
+	joinGroupVersion, err := c.negotiateVersion(joinGroup, v1, v5)
 	if err != nil {
-		return joinGroupResponse{}, err // TODO
+		return joinGroupResponse{}, err
 	}
 
 	if joinGroupVersion < v5 && request.GroupInstanceID != nil {
@@ -393,8 +393,16 @@ func (c *Conn) joinGroup(request joinGroupRequest) (joinGroupResponse, error) {
 			return expectZeroSize(func() (remain int, err error) {
 				switch joinGroupVersion {
 				case v5:
-					// TODO
-					return 0, nil
+					var resp joinGroupResponseV5
+					remain, err := (&resp).readFrom(&c.rbuf, size)
+
+					if err != nil {
+						return remain, err
+					}
+
+					response, err = resp.toJoinGroupResponse()
+
+					return remain, err
 				default:
 					var resp joinGroupResponseV1
 					remain, err := (&resp).readFrom(&c.rbuf, size)
